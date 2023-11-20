@@ -25,7 +25,8 @@ execString s = execExpr (parseExpr s) `catch` exitError
 --------------------------------------------------------------------------------
 execExpr :: Expr -> IO Value
 --------------------------------------------------------------------------------
-execExpr e = return (eval prelude e) `catch` exitError
+execExpr e = return (eval (prelude ++ env0) e) `catch` exitError
+
 
 --------------------------------------------------------------------------------
 -- | `parse s` returns the Expr representation of the String s
@@ -164,15 +165,39 @@ exitError (Error msg) = return (VErr msg)
 -- 1
 -- >>> execExpr (EApp "tail" el)
 -- (2 : [])
---------------------------------------------------------------------------------
-eval :: Env -> Expr -> Value
---------------------------------------------------------------------------------
-eval = error "TBD:eval"
 
---------------------------------------------------------------------------------
+eval :: Env -> Expr -> Value
+eval env (EInt n) = VInt n
+eval env (EBool b) = VBool b
+eval env ENil = VNil
+eval env (EVar x) = lookupId x env
+eval env (EBin op a b) = evalOp op (eval env a) (eval env b)
+eval env (EIf c t f) = case eval env c of
+                            VBool True -> eval env t
+                            VBool False -> eval env f
+                            _ -> throw (Error "type error in EIf")
+eval env (ELet x e1 e2) = eval env' e2
+  where env' = (x, eval (extendEnv env x e1) e1) : env
+        extendEnv e x ex = (x, VClos e x ex) : e
+eval env (ELam x body) = VClos env x body
+eval env (EApp e1 e2) = case eval env e1 of
+                            VClos env' x body -> eval ((x, eval env e2) : env') body
+                            _ -> throw (Error "type error in EApp")
+
 evalOp :: Binop -> Value -> Value -> Value
---------------------------------------------------------------------------------
-evalOp = error "TBD:evalOp"
+evalOp Plus  (VInt a)  (VInt b) = VInt (a + b)
+evalOp Minus (VInt a)  (VInt b) = VInt (a - b)
+evalOp Mul   (VInt a)  (VInt b) = VInt (a * b)
+evalOp Eq    (VInt a)  (VInt b) = VBool (a == b)
+evalOp Eq    (VBool a) (VBool b) = VBool (a == b)
+evalOp Ne    (VInt a)  (VInt b) = VBool (a /= b)
+evalOp Ne    (VBool a) (VBool b) = VBool (a /= b)
+evalOp Lt    (VInt a)  (VInt b) = VBool (a < b)
+evalOp Le    (VInt a)  (VInt b) = VBool (a <= b)
+evalOp And   (VBool a) (VBool b) = VBool (a && b)
+evalOp Or    (VBool a) (VBool b) = VBool (a || b)
+evalOp Cons  v1        v2        = VPair v1 v2
+evalOp _     _         _         = throw (Error "type error in evalOp")
 
 --------------------------------------------------------------------------------
 -- | `lookupId x env` returns the most recent
@@ -188,16 +213,26 @@ evalOp = error "TBD:evalOp"
 -- 2
 -- >>> lookupId "mickey" env0
 -- *** Exception: Error {errMsg = "unbound variable: mickey"}
---------------------------------------------------------------------------------
+
 lookupId :: Id -> Env -> Value
---------------------------------------------------------------------------------
-lookupId = error "TBD:lookupId"
+lookupId x [] = throw (Error ("unbound variable: " ++ x))
+lookupId x ((y,v):ys)
+  | x == y = v
+  | otherwise = lookupId x ys
 
 prelude :: Env
 prelude =
-  [ -- HINT: you may extend this "built-in" environment
-    -- with some "operators" that you find useful...
+  [ ("head", VPrim headFunc),
+    ("tail", VPrim tailFunc)
   ]
+  where
+    headFunc (VPair a _) = a
+    headFunc VNil = throw (Error "empty list")
+    headFunc _ = throw (Error "type error in head")
+
+    tailFunc (VPair _ b) = b
+    tailFunc VNil = throw (Error "empty list")
+    tailFunc _ = throw (Error "type error in tail")
 
 env0 :: Env
 env0 =  [ ("z1", VInt 0)
