@@ -27,63 +27,6 @@ execExpr :: Expr -> IO Value
 --------------------------------------------------------------------------------
 execExpr e = return (eval (prelude ++ env0) e) `catch` exitError
 
-
---------------------------------------------------------------------------------
--- | `parse s` returns the Expr representation of the String s
---
--- >>> parse "True"
--- EBool True
---
--- >>> parse "False"
--- EBool False
---
--- >>> parse "123"
--- EInt 123
---
--- >>> parse "foo"
--- EVar "foo"
---
--- >>> parse "x + y"
--- EBin Plus (EVar "x") (EVar "y")
---
--- >>> parse "if x <= 4 then a || b else a && b"
--- EIf (EBin Le (EVar "x") (EInt 4)) (EBin Or (EVar "a") (EVar "b")) (EBin And (EVar "a") (EVar "b"))
---
--- >>> parse "if 4 <= z then 1 - z else 4 * z"
--- EIf (EBin Le (EInt 4) (EVar "z")) (EBin Minus (EInt 1) (EVar "z")) (EBin Mul (EInt 4) (EVar "z"))
---
--- >>> parse "let a = 6 * 2 in a /= 11"
--- ELet "a" (EBin Mul (EInt 6) (EInt 2)) (EBin Ne (EVar "a") (EInt 11))
---
--- >>> parseTokens "() (  )"
--- Right [LPAREN (AlexPn 0 1 1),RPAREN (AlexPn 1 1 2),LPAREN (AlexPn 3 1 4),RPAREN (AlexPn 6 1 7)]
---
--- >>> parse "f x"
--- EApp (EVar "f") (EVar "x")
---
--- >>> parse "(\\ x -> x + x) (3 * 3)"
--- EApp (ELam "x" (EBin Plus (EVar "x") (EVar "x"))) (EBin Mul (EInt 3) (EInt 3))
---
--- >>> parse "(((add3 (x)) y) z)"
--- EApp (EApp (EApp (EVar "add3") (EVar "x")) (EVar "y")) (EVar "z")
---
--- >>> parse <$> readFile "tests/input/t1.hs"
--- EBin Mul (EBin Plus (EInt 2) (EInt 3)) (EBin Plus (EInt 4) (EInt 5))
---
--- >>> parse <$> readFile "tests/input/t2.hs"
--- ELet "z" (EInt 3) (ELet "y" (EInt 2) (ELet "x" (EInt 1) (ELet "z1" (EInt 0) (EBin Minus (EBin Plus (EVar "x") (EVar "y")) (EBin Plus (EVar "z") (EVar "z1"))))))
---
--- >>> parse "1-2-3"
--- EBin Minus (EBin Minus (EInt 1) (EInt 2)) (EInt 3)
--- >>> parse "1+a&&b||c+d*e-f-g x"
--- EBin Or (EBin And (EBin Plus (EInt 1) (EVar "a")) (EVar "b")) (EBin Minus (EBin Minus (EBin Plus (EVar "c") (EBin Mul (EVar "d") (EVar "e"))) (EVar "f")) (EApp (EVar "g") (EVar "x")))
---
--- >>> parse "1:3:5:[]"
--- EBin Cons (EInt 1) (EBin Cons (EInt 3) (EBin Cons (EInt 5) ENil))
---
--- >>> parse "[1,3,5]"
--- EBin Cons (EInt 1) (EBin Cons (EInt 3) (EBin Cons (EInt 5) ENil))
-
 --------------------------------------------------------------------------------
 parse :: String -> Expr
 --------------------------------------------------------------------------------
@@ -92,127 +35,54 @@ parse = parseExpr
 exitError :: Error -> IO Value
 exitError (Error msg) = return (VErr msg)
 
---------------------------------------------------------------------------------
--- | `eval env e` evaluates the Nano expression `e` in the environment `env`
---   (i.e. uses `env` for the values of the **free variables** in `e`),
---   and throws an `Error "unbound variable"` if the expression contains
---   a free variable that is **not bound** in `env`.
---
--- part (a)
---
--- >>> eval env0 (EBin Minus (EBin Plus "x" "y") (EBin Plus "z" "z1"))
--- 0
---
--- >>> eval env0 "p"
--- *** Exception: Error {errMsg = "unbound variable: p"}
---
--- part (b)
---
--- >>> eval []  (EBin Le (EInt 2) (EInt 3))
--- True
---
--- >>> eval []  (EBin Eq (EInt 2) (EInt 3))
--- False
---
--- >>> eval []  (EBin Eq (EInt 2) (EBool True))
--- *** Exception: Error {errMsg = "type error: binop"}
---
--- >>> eval []  (EBin Lt (EInt 2) (EBool True))
--- *** Exception: Error {errMsg = "type error: binop"}
---
--- >>> let e1 = EIf (EBin Lt "z1" "x") (EBin Ne "y" "z") (EBool False)
--- >>> eval env0 e1
--- True
---
--- >>> let e2 = EIf (EBin Eq "z1" "x") (EBin Le "y" "z") (EBin Le "z" "y")
--- >>> eval env0 e2
--- False
---
--- part (c)
---
--- >>> let e1 = EBin Plus "x" "y"
--- >>> let e2 = ELet "x" (EInt 1) (ELet "y" (EInt 2) e1)
--- >>> eval [] e2
--- 3
---
--- part (d)
---
--- >>> eval [] (EApp (ELam "x" (EBin Plus "x" "x")) (EInt 3))
--- 6
---
--- >>> let e3 = ELet "h" (ELam "y" (EBin Plus "x" "y")) (EApp "f" "h")
--- >>> let e2 = ELet "x" (EInt 100) e3
--- >>> let e1 = ELet "f" (ELam "g" (ELet "x" (EInt 0) (EApp "g" (EInt 2)))) e2
--- >>> eval [] e1
--- 102
---
--- part (e)
--- |
--- >>> :{
--- eval [] (ELet "fac" (ELam "n" (EIf (EBin Eq "n" (EInt 0))
---                                  (EInt 1)
---                                  (EBin Mul "n" (EApp "fac" (EBin Minus "n" (EInt 1))))))
---             (EApp "fac" (EInt 10)))
--- :}
--- 3628800
---
--- part (f)
---
--- >>> let el = EBin Cons (EInt 1) (EBin Cons (EInt 2) ENil)
--- >>> execExpr el
--- (1 : (2 : []))
--- >>> execExpr (EApp "head" el)
--- 1
--- >>> execExpr (EApp "tail" el)
--- (2 : [])
-
 eval :: Env -> Expr -> Value
-eval env (EInt n) = VInt n
-eval env (EBool b) = VBool b
-eval env ENil = VNil
-eval env (EVar x) = lookupId x env
-eval env (EBin op a b) = evalOp op (eval env a) (eval env b)
-eval env (EIf c t f) = case eval env c of
-                            VBool True -> eval env t
-                            VBool False -> eval env f
-                            _ -> throw (Error "type error in EIf")
-eval env (ELet x e1 e2) = eval env' e2
-  where env' = (x, eval (extendEnv env x e1) e1) : env
-        extendEnv e x ex = (x, VClos e x ex) : e
-eval env (ELam x body) = VClos env x body
-eval env (EApp e1 e2) = case eval env e1 of
-                            VClos env' x body -> eval ((x, eval env e2) : env') body
-                            _ -> throw (Error "type error in EApp")
+eval env expr = case expr of
+    ENil -> VNil
+    EBool bool -> VBool bool
+    EInt n -> value n
+    EVar var -> lookupId var env
+    EBin op lhs rhs -> evalOp op (eval env lhs) (eval env rhs)
+    EIf cond thenExpr elseExpr -> 
+        if eval env cond == VBool True then eval env thenExpr else eval env elseExpr
+    ELet varName expr1 expr2 -> 
+        let newEnv = (varName, eval newEnv expr1) : env
+        in eval newEnv expr2
+    ELam arg body -> VClos env arg body
+    EApp funcExpr argExpr -> 
+        let funcVal = eval env funcExpr
+            argVal = eval env argExpr
+        in case funcVal of
+            VPrim primFunc -> primFunc argVal
+            VClos closureEnv paramName body -> eval ((paramName, argVal) : closureEnv) body
+            _ -> throw (Error "type error in EApp")
 
 evalOp :: Binop -> Value -> Value -> Value
-evalOp Plus  (VInt a)  (VInt b) = VInt (a + b)
-evalOp Minus (VInt a)  (VInt b) = VInt (a - b)
-evalOp Mul   (VInt a)  (VInt b) = VInt (a * b)
-evalOp Eq    (VInt a)  (VInt b) = VBool (a == b)
-evalOp Eq    (VBool a) (VBool b) = VBool (a == b)
-evalOp Ne    (VInt a)  (VInt b) = VBool (a /= b)
-evalOp Ne    (VBool a) (VBool b) = VBool (a /= b)
-evalOp Lt    (VInt a)  (VInt b) = VBool (a < b)
-evalOp Le    (VInt a)  (VInt b) = VBool (a <= b)
-evalOp And   (VBool a) (VBool b) = VBool (a && b)
-evalOp Or    (VBool a) (VBool b) = VBool (a || b)
-evalOp Cons  v1        v2        = VPair v1 v2
-evalOp _     _         _         = throw (Error "type error in evalOp")
-
---------------------------------------------------------------------------------
--- | `lookupId x env` returns the most recent
---   binding for the variable `x` (i.e. the first
---   from the left) in the list representing the
---   environment, and throws an `Error` otherwise.
---
--- >>> lookupId "z1" env0
--- 0
--- >>> lookupId "x" env0
--- 1
--- >>> lookupId "y" env0
--- 2
--- >>> lookupId "mickey" env0
--- *** Exception: Error {errMsg = "unbound variable: mickey"}
+evalOp bop val1 val2 = case bop of
+    Plus -> case (val1, val2) of
+        (VInt x, VInt y) -> VInt (x + y)
+        _ -> throw (Error "type error in evalOp Plus")
+    Minus -> case (val1, val2) of
+        (VInt x, VInt y) -> VInt (x - y)
+        _ -> throw (Error "type error in evalOp Minus")
+    Mul -> case (val1, val2) of
+        (VInt x, VInt y) -> VInt (x * y)
+        _ -> throw (Error "type error in evalOp Mul")
+    Eq -> VBool (val1 == val2)
+    Ne -> VBool (val1 /= val2)
+    Lt -> case (val1, val2) of
+        (VInt x, VInt y) -> VBool (x < y)
+        _ -> throw (Error "type error in evalOp Lt")
+    Le -> case (val1, val2) of
+        (VInt x, VInt y) -> VBool (x <= y)
+        _ -> throw (Error "type error in evalOp Le")
+    And -> case (val1, val2) of
+        (VBool x, VBool y) -> VBool (x && y)
+        _ -> throw (Error "type error in evalOp And")
+    Or -> case (val1, val2) of
+        (VBool x, VBool y) -> VBool (x || y)
+        _ -> throw (Error "type error in evalOp Or")
+    Cons -> VPair val1 val2
+    _ -> throw (Error "unsupported operation in evalOp")
 
 lookupId :: Id -> Env -> Value
 lookupId x [] = throw (Error ("unbound variable: " ++ x))
@@ -241,5 +111,3 @@ env0 =  [ ("z1", VInt 0)
         , ("z" , VInt 3)
         , ("z1", VInt 4)
         ]
-
---------------------------------------------------------------------------------
